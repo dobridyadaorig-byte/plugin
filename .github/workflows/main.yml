@@ -1,4 +1,4 @@
-name: Manual Java Compile
+name: Paper Plugin Build (1.21.11)
 
 on:
   push:
@@ -14,21 +14,52 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v5
+    # Накатываем Java 21 — ядро 1.21.11 без неё вообще не запустится
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
 
-    # Создаем папку для скомпилированных классов, компилируем и упаковываем в JAR
-    - name: Compile and Jar
+    # Качаем правильное ядро Paper 1.21.11
+    - name: Download Paper 1.21.11 API
+      run: |
+        mkdir -p libs
+        curl -L -o libs/paper.jar "https://papermc.io"
+
+    # Компилируем чистым javac и пакуем ресурсы
+    - name: Build Plugin JAR
       run: |
         mkdir -p out
-        javac -d out $(find . -name "*.java")
-        jar -cvf my-plugin.jar -C out .
+        find . -name "*.java" > sources.txt
+        
+        if [ -s sources.txt ]; then
+          # Компилируем исходники, подключая ядро 1.21.11 как библиотеку
+          javac -cp "libs/paper.jar" -d out @sources.txt
+          
+          # Автоматически ищем plugin.yml по репозиторию и закидываем в сборку
+          PLUGIN_YML=$(find . -name "plugin.yml" -print -quit)
+          if [ -n "$PLUGIN_YML" ]; then
+            cp "$PLUGIN_YML" out/
+          else
+            echo "Error: plugin.yml not found! Plugin needs it to load." && exit 1
+          fi
+          
+          # Если есть config.yml, забираем его тоже
+          CONFIG_YML=$(find . -name "config.yml" -print -quit)
+          if [ -n "$CONFIG_YML" ]; then
+            cp "$CONFIG_YML" out/
+          fi
+          
+          # Склеиваем всё в один готовый .jar
+          jar -cvf paper-plugin.jar -C out .
+        else
+          echo "Error: No .java files found!" && exit 1
+        fi
 
-    - name: Upload JAR Artifact
+    # Выгружаем готовый артефакт, который можно скачать
+    - name: Upload Plugin
       uses: actions/upload-artifact@v4
       with:
-        name: manual-jar-file
-        path: my-plugin.jar
+        name: paper-plugin-1.21.11
+        path: paper-plugin.jar
