@@ -20,13 +20,17 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    # Качаем чистое API из центрального репозитория, где файлы никогда не удаляют
-    - name: Download Paper API from Maven Central
+    # Качаем РЕЛИЗНЫЙ Bukkit, который лежит там вечно и весит всего 1 Мб
+    - name: Download Clean Bukkit API
       run: |
         mkdir -p libs
-        echo "Downloading stable Paper API..."
-        curl -L -o libs/paper-api.jar "https://apache.org" || \
-        curl -L -o libs/paper-api.jar "https://papermc.io"
+        curl -L -o libs/bukkit.jar "https://apache.org"
+        
+        # Проверяем, живой ли файл
+        if ! jar -tf libs/bukkit.jar > /dev/null 2>&1; then
+          echo "Error: Bukkit download failed, trying backup..."
+          curl -L -o libs/bukkit.jar "https://spigotmc.org"
+        fi
 
     - name: Build Plugin JAR
       run: |
@@ -34,10 +38,10 @@ jobs:
         find . -name "*.java" > sources.txt
         
         if [ -s sources.txt ]; then
-          # Компилируем проект, используя скачанное API
-          javac -cp "libs/paper-api.jar" -d out @sources.txt
+          # Компилируем через Bukkit
+          javac -cp "libs/bukkit.jar" -d out @sources.txt
           
-          # Закидываем plugin.yml в архив
+          # Закидываем ресурсы
           PLUGIN_YML=$(find . -name "plugin.yml" -print -quit)
           if [ -n "$PLUGIN_YML" ]; then
             cp "$PLUGIN_YML" out/
@@ -45,13 +49,11 @@ jobs:
             echo "Error: plugin.yml not found!" && exit 1
           fi
           
-          # Закидываем config.yml, если есть
           CONFIG_YML=$(find . -name "config.yml" -print -quit)
           if [ -n "$CONFIG_YML" ]; then
             cp "$CONFIG_YML" out/
           fi
           
-          # Создаем финальный плагин
           jar -cvf paper-plugin.jar -C out .
         else
           echo "Error: No .java files found!" && exit 1
