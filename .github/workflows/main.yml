@@ -14,37 +14,30 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Накатываем Java 21 (строго нужна для всей линейки 1.21)
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
 
-    # Скачиваем стабильное и гарантированно существующее API 1.21.1
-    # Оно на 100% совместимо со всеми версиями 1.21.x при компиляции
-    name: Download Paper API
+    - name: Download Paper API
       run: |
         mkdir -p libs
         echo "Downloading stable Paper API..."
         curl -L -o libs/paper.jar "https://papermc.io"
         
-        # Проверяем, что файл скачался корректно
         if [ ! -s libs/paper.jar ]; then
           echo "Error: Download failed!" && exit 1
         fi
 
-    # Компиляция кода и упаковка ресурсов
     - name: Build Plugin JAR
       run: |
         mkdir -p out
         find . -name "*.java" > sources.txt
         
         if [ -s sources.txt ]; then
-          # Скармливаем компилятору скачанный джарник
           javac -cp "libs/paper.jar" -d out @sources.txt
           
-          # Автоматически ищем plugin.yml
           PLUGIN_YML=$(find . -name "plugin.yml" -print -quit)
           if [ -n "$PLUGIN_YML" ]; then
             cp "$PLUGIN_YML" out/
@@ -52,19 +45,16 @@ jobs:
             echo "Error: plugin.yml not found in repository!" && exit 1
           fi
           
-          # Если есть config.yml, забираем
           CONFIG_YML=$(find . -name "config.yml" -print -quit)
           if [ -n "$CONFIG_YML" ]; then
             cp "$CONFIG_YML" out/
           fi
           
-          # Упаковываем плагин в готовый .jar
           jar -cvf paper-plugin.jar -C out .
         else
           echo "Error: No .java files found!" && exit 1
         fi
 
-    # Выгружаем готовый артефакт
     - name: Upload Plugin
       uses: actions/upload-artifact@v4
       with:
