@@ -14,50 +14,58 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Накатываем Java 21 — ядро 1.21.11 без неё вообще не запустится
+    # Накатываем Java 21
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
 
-    # Качаем правильное ядро Paper 1.21.11
+    # Умное скачивание: скрипт сам узнает последний билд и скачает целый файл
     - name: Download Paper 1.21.11 API
       run: |
         mkdir -p libs
-        curl -L -o libs/paper.jar "https://papermc.io"
+        echo "Getting latest build number for 1.21.11..."
+        LATEST_BUILD=$(curl -s https://papermc.io | jq '.builds[-1]')
+        echo "Latest build is $LATEST_BUILD. Downloading..."
+        curl -L -o libs/paper.jar "https://papermc.io/builds/${LATEST_BUILD}/downloads/paper-1.21.11-${LATEST_BUILD}.jar"
+        
+        # Проверяем, что скачался реальный zip-архив, а не пустой файл
+        if ! jar -tf libs/paper.jar > /dev/null 2>&1; then
+          echo "Error: Downloaded paper.jar is corrupted or empty!" && exit 1
+        fi
 
-    # Компилируем чистым javac и пакуем ресурсы
+    # Компиляция кода и упаковка ресурсов
     - name: Build Plugin JAR
       run: |
         mkdir -p out
         find . -name "*.java" > sources.txt
         
         if [ -s sources.txt ]; then
-          # Компилируем исходники, подключая ядро 1.21.11 как библиотеку
+          # Компилируем, подключая целое рабочее ядро
           javac -cp "libs/paper.jar" -d out @sources.txt
           
-          # Автоматически ищем plugin.yml по репозиторию и закидываем в сборку
+          # Ищем plugin.yml по репозиторию
           PLUGIN_YML=$(find . -name "plugin.yml" -print -quit)
           if [ -n "$PLUGIN_YML" ]; then
             cp "$PLUGIN_YML" out/
           else
-            echo "Error: plugin.yml not found! Plugin needs it to load." && exit 1
+            echo "Error: plugin.yml not found!" && exit 1
           fi
           
-          # Если есть config.yml, забираем его тоже
+          # Ищем config.yml, если есть
           CONFIG_YML=$(find . -name "config.yml" -print -quit)
           if [ -n "$CONFIG_YML" ]; then
             cp "$CONFIG_YML" out/
           fi
           
-          # Склеиваем всё в один готовый .jar
+          # Склеиваем плагин
           jar -cvf paper-plugin.jar -C out .
         else
           echo "Error: No .java files found!" && exit 1
         fi
 
-    # Выгружаем готовый артефакт, который можно скачать
+    # Выгружаем готовый артефакт
     - name: Upload Plugin
       uses: actions/upload-artifact@v4
       with:
